@@ -13,7 +13,7 @@ A terminal UI (TUI) application for submitting timesheet entries to Odoo directl
 
 ## Requirements
 
-- Go 1.22 or later
+- Go 1.25 or later
 - An Odoo instance accessible over HTTP/HTTPS with API key authentication
 - (Optional) A `~/.gitcreds` file for authenticated GitHub API requests
 
