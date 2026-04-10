@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -57,15 +58,23 @@ func githubToken() string {
 // GitHub repo URL, e.g. "https://github.com/owner/repo".
 // It authenticates using the token from ~/.gitcreds when available.
 // Returns a non-nil error if the request fails or the API returns a non-200 status.
-func githubIssues(repoURL string) ([]string, error) {
+// githubIssues fetches open issues (excluding pull requests) for the given
+// GitHub repo URL, e.g. "https://github.com/owner/repo". It authenticates
+// using the token from ~/.gitcreds when available. The request uses the
+// provided context for cancellation and timeouts; if ctx is nil,
+// context.Background() is used.
+func githubIssues(ctx context.Context, repoURL string) ([]string, error) {
 	if repoURL == "" {
 		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	path := strings.TrimPrefix(repoURL, "https://github.com/")
 	path = strings.TrimPrefix(path, "http://github.com/")
 	apiURL := "https://api.github.com/repos/" + path + "/issues?state=open&per_page=100"
 
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, err
 	}

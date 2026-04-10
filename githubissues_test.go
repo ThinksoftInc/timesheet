@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -145,7 +147,7 @@ func issuesFromServer(t *testing.T, srv *httptest.Server) ([]string, error) {
 // githubIssuesFromURL is a test-only helper that calls the same logic as
 // githubIssues() but against an arbitrary URL (our httptest server).
 func githubIssuesFromURL(apiURL string) ([]string, error) {
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +182,7 @@ func githubIssuesFromURL(apiURL string) ([]string, error) {
 
 func TestGithubIssuesEmpty(t *testing.T) {
 	t.Parallel()
-	titles, err := githubIssues("")
+	titles, err := githubIssues(context.Background(), "")
 	if err != nil {
 		t.Fatalf("githubIssues(\"\") error = %v, want nil", err)
 	}
@@ -273,7 +275,7 @@ func TestGithubIssuesHTTP(t *testing.T) {
 func TestGithubIssuesNetworkError(t *testing.T) {
 	t.Parallel()
 	// Port 1 is reserved and will refuse connections on all platforms.
-	_, err := githubIssues("https://github.com/owner/repo-that-does-not-exist-12345xyz")
+	_, err := githubIssues(context.Background(), "https://github.com/owner/repo-that-does-not-exist-12345xyz")
 	// We expect a network error (not nil, not a panic).
 	if err == nil {
 		t.Log("unexpectedly got nil error — network may have responded")
@@ -302,5 +304,28 @@ func TestGithubIssuesErrorMessage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("error message %q does not mention 403", err.Error())
+	}
+}
+
+// TestGithubIssuesCancellation verifies that githubIssues respects context
+// cancellation by using a server that delays its response. The request is
+// issued with a short timeout context and should return an error.
+func TestGithubIssuesCancellation(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Delay longer than the client's context timeout.
+		time.Sleep(200 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	// Use a context with a very short timeout so the request is cancelled.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := githubIssues(ctx, srv.URL)
+	if err == nil {
+		t.Fatal("expected error due to cancellation/timeout, got nil")
 	}
 }

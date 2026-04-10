@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -123,7 +124,12 @@ func main() {
 
 	app := tview.NewApplication()
 
-	projectInfos := projects()
+	// Use a cancellable context for background loads so we can cancel inflight
+	// Odoo requests when the user makes a new selection or exits the app.
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
+	projectInfos := projects(rootCtx)
 	names := projectNames(projectInfos)
 	initialProject := ""
 	if len(names) > 0 {
@@ -136,7 +142,7 @@ func main() {
 	if len(projectInfos) > 0 {
 		selectedProject = &projectInfos[0]
 	}
-	currentTasks := projectTasks(initialProject)
+	currentTasks := projectTasks(rootCtx, initialProject)
 	selectedTaskIdx := 0
 	taskChangedFn := func(_ string, idx int) {
 		selectedTaskIdx = idx
@@ -149,7 +155,8 @@ func main() {
 		initialGitURL := parseGitURL(selectedProject.description)
 		initialGitViewText = " Repo: " + initialGitURL
 		var ghErr error
-		initialIssues, ghErr = githubIssues(initialGitURL)
+		// Use rootCtx so the initial fetch is cancellable when the app exits.
+		initialIssues, ghErr = githubIssues(rootCtx, initialGitURL)
 		if ghErr != nil {
 			initialGitViewText += "  (" + ghErr.Error() + ")"
 		}
@@ -189,22 +196,33 @@ func main() {
 	// captures its generation at dispatch time and discards its result if a newer
 	// selection has since been made, preventing stale data from overwriting the UI.
 	var loadGen int
+	var loadCancel context.CancelFunc
 
 	// Create standalone forms for the side-by-side row.
 	projectForm := tview.NewForm().
 		AddDropDown("Project", names, 0, func(option string, _ int) {
 			loadGen++
 			gen := loadGen
-			go func() {
-				tasks := projectTasks(option)
+			// Cancel any previous in-flight load and start a new one with a
+			// bounded timeout so slow network calls don't hang the UI.
+			if loadCancel != nil {
+				loadCancel()
+			}
+			loadCtx, cancel := context.WithTimeout(rootCtx, 8*time.Second)
+			loadCancel = cancel
+
+			go func(gen int, opt string, ctx context.Context) {
+				tasks := projectTasks(ctx, opt)
 				var gitViewText string
 				var issues []string
-				p := findProject(projectInfos, option)
+				p := findProject(projectInfos, opt)
 				if p != nil {
 					gitURL := parseGitURL(p.description)
 					gitViewText = " Repo: " + gitURL
 					var ghErr error
-					issues, ghErr = githubIssues(gitURL)
+					// Use the same load context so issue fetches are cancelled when
+					// the project selection changes.
+					issues, ghErr = githubIssues(ctx, gitURL)
 					if ghErr != nil {
 						gitViewText += "  (" + ghErr.Error() + ")"
 					}
@@ -222,7 +240,7 @@ func main() {
 					issueDropdown.SetOptions(issues, nil)
 					issueDropdown.SetCurrentOption(0)
 				})
-			}()
+			}(gen, option, loadCtx)
 		})
 
 	taskForm := tview.NewForm().
@@ -298,7 +316,11 @@ func main() {
 				if taskIdx >= 0 && taskIdx < len(tasks) {
 					taskID = tasks[taskIdx].id
 				}
-				result <- createTimesheet(projectID, taskID, accountID, date, unitAmount, description)
+				// Tie the save operation to rootCtx with a timeout so the
+				// request can be cancelled if the app shuts down.
+				saveCtx, saveCancel := context.WithTimeout(rootCtx, 30*time.Second)
+				defer saveCancel()
+				result <- createTimesheet(saveCtx, projectID, taskID, accountID, date, unitAmount, description)
 			}()
 			ticker := time.NewTicker(80 * time.Millisecond)
 			defer ticker.Stop()

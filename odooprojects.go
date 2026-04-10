@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"html"
 	"regexp"
 	"slices"
@@ -25,12 +26,13 @@ var (
 )
 
 // projects fetches all in-progress projects with their descriptions.
-func projects() []projectInfo {
-	conn, err := NewConn()
+// It accepts a context so callers can cancel or time out the request.
+func projects(ctx context.Context) []projectInfo {
+	conn, err := NewConn(ctx)
 	if err != nil {
 		return nil
 	}
-	records, err := conn.SearchRead("project.project", 0, 0,
+	records, err := conn.SearchRead(ctx, "project.project", 0, 0,
 		[]string{"id", "name", "description", "account_id"},
 		[]any{[]any{"stage_id", "=", "In Progress"}})
 	if err != nil {
@@ -99,8 +101,8 @@ func findProject(infos []projectInfo, name string) *projectInfo {
 
 // projectTasks fetches tasks for the given project name, returning id and name
 // for each so callers can pass IDs directly to Odoo without extra lookups.
-func projectTasks(projectName string) []taskInfo {
-	conn, err := NewConn()
+func projectTasks(ctx context.Context, projectName string) []taskInfo {
+	conn, err := NewConn(ctx)
 	if err != nil {
 		return nil
 	}
@@ -108,10 +110,10 @@ func projectTasks(projectName string) []taskInfo {
 	nameFilter := []any{"name", "in", allowedTasks}
 	var records []map[string]any
 	if projectName != "" {
-		records, err = conn.SearchRead("project.task", 0, 0, []string{"id", "name"},
+		records, err = conn.SearchRead(ctx, "project.task", 0, 0, []string{"id", "name"},
 			[]any{[]any{"project_id.name", "=", projectName}, nameFilter})
 	} else {
-		records, err = conn.SearchRead("project.task", 0, 0, []string{"id", "name"},
+		records, err = conn.SearchRead(ctx, "project.task", 0, 0, []string{"id", "name"},
 			[]any{nameFilter})
 	}
 	if err != nil {

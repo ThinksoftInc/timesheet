@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,7 +46,8 @@ func loadConfig() (serverConfig, error) {
 }
 
 // NewConn creates and authenticates a new Odoo connection using the config file.
-func NewConn() (odoorpc.Odoo, error) {
+// It accepts a context so callers can cancel or time out the login operation.
+func NewConn(ctx context.Context) (odoorpc.Odoo, error) {
 	cfg, err := loadConfig()
 	if err != nil {
 		return nil, err
@@ -57,7 +59,7 @@ func NewConn() (odoorpc.Odoo, error) {
 		WithDatabase(cfg.Database).
 		WithUsername(cfg.Username).
 		WithPassword(cfg.Apikey)
-	if err := conn.Login(); err != nil {
+	if err := conn.Login(ctx); err != nil {
 		return nil, fmt.Errorf("odoo login: %w", err)
 	}
 	return conn, nil
