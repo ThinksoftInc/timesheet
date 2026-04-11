@@ -40,9 +40,18 @@ func projects(ctx context.Context) []projectInfo {
 	}
 	infos := make([]projectInfo, 0, len(records))
 	for _, record := range records {
-		id, _ := record["id"].(float64)
-		name, _ := record["name"].(string)
-		desc, _ := record["description"].(string)
+		var id float64
+		if v, ok := record["id"].(float64); ok {
+			id = v
+		}
+		var name string
+		if v, ok := record["name"].(string); ok {
+			name = v
+		}
+		var desc string
+		if v, ok := record["description"].(string); ok {
+			desc = v
+		}
 		// account_id is a Many2one: Odoo returns [id, name] or false.
 		var accountID int
 		if v, ok := record["account_id"].([]any); ok && len(v) > 0 {
@@ -121,8 +130,14 @@ func projectTasks(ctx context.Context, projectName string) []taskInfo {
 	}
 	tasks := make([]taskInfo, 0, len(records))
 	for _, record := range records {
-		id, _ := record["id"].(float64)
-		name, _ := record["name"].(string)
+		var id float64
+		if v, ok := record["id"].(float64); ok {
+			id = v
+		}
+		var name string
+		if v, ok := record["name"].(string); ok {
+			name = v
+		}
 		tasks = append(tasks, taskInfo{id: int(id), name: name})
 	}
 	taskOrder := map[string]int{"Odoo Support": 0, "Planning / Discovery": 1, "Development": 2}

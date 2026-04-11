@@ -25,6 +25,11 @@ func TestParseDuration(t *testing.T) {
 		{"no colon", "0130", 0},
 		{"empty string", "", 0},
 		{"only colon", ":", 0},
+		{"spaces around", " 01:30 ", 1.5},
+		{"single-digit minute", "1:05", 1 + 5.0/60.0},
+		{"invalid minutes", "01:60", 0},
+		{"negative numbers", "-1:30", 0},
+		{"minutes negative", "01:-5", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

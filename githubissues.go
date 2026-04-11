@@ -33,7 +33,10 @@ func githubToken() string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	// explicitly ignore Close error to satisfy errcheck
+	defer func() {
+		_ = f.Close()
+	}()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -89,7 +92,8 @@ func githubIssues(ctx context.Context, repoURL string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// explicitly ignore Close error to satisfy errcheck
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API: %s", resp.Status)

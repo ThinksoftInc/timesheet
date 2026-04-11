@@ -37,12 +37,25 @@ func durationOptions() []string {
 // parseDuration converts a "HH:MM" string to fractional hours.
 // e.g. "00:30" → 0.5, "01:30" → 1.5, "02:00" → 2.0
 func parseDuration(s string) float64 {
+	s = strings.TrimSpace(s)
 	parts := strings.SplitN(s, ":", 2)
 	if len(parts) != 2 {
 		return 0
 	}
-	hours, _ := strconv.Atoi(parts[0])
-	minutes, _ := strconv.Atoi(parts[1])
+	hoursStr := strings.TrimSpace(parts[0])
+	minsStr := strings.TrimSpace(parts[1])
+	hours, err := strconv.Atoi(hoursStr)
+	if err != nil {
+		return 0
+	}
+	minutes, err := strconv.Atoi(minsStr)
+	if err != nil {
+		return 0
+	}
+	// Validate sensible ranges: non-negative hours, minutes in [0,59].
+	if hours < 0 || minutes < 0 || minutes >= 60 {
+		return 0
+	}
 	return float64(hours) + float64(minutes)/60.0
 }
 
@@ -67,7 +80,9 @@ func formatDescription(issueText, areaText string) string {
 		if end > 0 {
 			numStr = issueText[1:end]
 		}
-		num, _ = strconv.Atoi(numStr)
+		if n, err := strconv.Atoi(numStr); err == nil {
+			num = n
+		}
 	}
 	if num == 0 {
 		return text

@@ -103,7 +103,9 @@ func serveIssues(t *testing.T, status int, body string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		fmt.Fprint(w, body)
+		if _, err := fmt.Fprint(w, body); err != nil {
+			t.Fatalf("writing response body: %v", err)
+		}
 	}))
 }
 
@@ -115,34 +117,7 @@ func serveIssues(t *testing.T, status int, body string) *httptest.Server {
 // We do this by pointing the URL at the test server directly via a custom
 // transport; that's simpler than string-hacking. Instead we'll just call a
 // thin wrapper below.
-func issuesFromServer(t *testing.T, srv *httptest.Server) ([]string, error) {
-	t.Helper()
-	// githubIssues() builds: https://api.github.com/repos/<path>/issues?...
-	// We can't easily redirect that in the current implementation without
-	// injecting a client. Instead, we test githubIssues() end-to-end by
-	// passing a real-looking URL and overriding the HTTP transport for the
-	// test process via a round-tripper shim injected at the package level.
-	// Since the function creates its own http.Client, we test through the
-	// exported network path only when we have a real server. For unit tests
-	// we use a small reimplementation that mirrors the parsing logic.
-	//
-	// Approach: replace the API URL scheme+host with the test server's address.
-	// We achieve this by using the test server as a proxy target and passing a
-	// URL that routes there. The function strips "https://github.com/" from the
-	// repoURL and prepends the API base. We pass a custom repoURL containing
-	// our test server's address in place of "github.com".
-	//
-	// Because githubIssues has the API base hard-coded, the cleanest approach
-	// without refactoring is to call the underlying HTTP logic directly via a
-	// helper that accepts an arbitrary apiURL — but that helper doesn't exist.
-	//
-	// Therefore we test the JSON parsing and filtering logic by parsing the same
-	// way githubIssues() does, and test the HTTP path separately via a real
-	// handler exercised through the exported function with a patched URL.
-	// For clarity we just call githubIssues with "" for empty, and rely on the
-	// server tests below that use httptest to validate the HTTP plumbing.
-	return nil, nil
-}
+// issuesFromServer removed; tests use githubIssuesFromURL helper instead.
 
 // githubIssuesFromURL is a test-only helper that calls the same logic as
 // githubIssues() but against an arbitrary URL (our httptest server).
@@ -159,7 +134,8 @@ func githubIssuesFromURL(apiURL string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// explicitly ignore Close error to satisfy errcheck
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API: %s", resp.Status)
@@ -316,7 +292,9 @@ func TestGithubIssuesCancellation(t *testing.T) {
 		// Delay longer than the client's context timeout.
 		time.Sleep(200 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[]`)
+		if _, err := fmt.Fprint(w, `[]`); err != nil {
+			t.Fatalf("writing delayed response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
