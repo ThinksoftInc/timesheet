@@ -158,7 +158,7 @@ func githubIssuesFromURL(apiURL string) ([]string, error) {
 
 func TestGithubIssuesEmpty(t *testing.T) {
 	t.Parallel()
-	titles, err := githubIssues(context.Background(), "")
+	titles, err := githubIssues(context.Background(), "", "open")
 	if err != nil {
 		t.Fatalf("githubIssues(\"\") error = %v, want nil", err)
 	}
@@ -251,7 +251,7 @@ func TestGithubIssuesHTTP(t *testing.T) {
 func TestGithubIssuesNetworkError(t *testing.T) {
 	t.Parallel()
 	// Port 1 is reserved and will refuse connections on all platforms.
-	_, err := githubIssues(context.Background(), "https://github.com/owner/repo-that-does-not-exist-12345xyz")
+	_, err := githubIssues(context.Background(), "https://github.com/owner/repo-that-does-not-exist-12345xyz", "open")
 	// We expect a network error (not nil, not a panic).
 	if err == nil {
 		t.Log("unexpectedly got nil error — network may have responded")
@@ -302,7 +302,7 @@ func TestGithubIssuesCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 
-	_, err := githubIssues(ctx, srv.URL)
+	_, err := githubIssues(ctx, srv.URL, "open")
 	if err == nil {
 		t.Fatal("expected error due to cancellation/timeout, got nil")
 	}

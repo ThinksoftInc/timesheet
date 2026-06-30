@@ -66,7 +66,7 @@ func githubToken() string {
 // using the token from ~/.gitcreds when available. The request uses the
 // provided context for cancellation and timeouts; if ctx is nil,
 // context.Background() is used.
-func githubIssues(ctx context.Context, repoURL string) ([]string, error) {
+func githubIssues(ctx context.Context, repoURL string, state string) ([]string, error) {
 	if repoURL == "" {
 		return nil, nil
 	}
@@ -75,7 +75,7 @@ func githubIssues(ctx context.Context, repoURL string) ([]string, error) {
 	}
 	path := strings.TrimPrefix(repoURL, "https://github.com/")
 	path = strings.TrimPrefix(path, "http://github.com/")
-	apiURL := "https://api.github.com/repos/" + path + "/issues?state=open&per_page=100"
+	apiURL := "https://api.github.com/repos/" + path + "/issues?state=" + state + "&per_page=100"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {

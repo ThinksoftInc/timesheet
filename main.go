@@ -171,7 +171,7 @@ func main() {
 		initialGitViewText = " Repo: " + initialGitURL
 		var ghErr error
 		// Use rootCtx so the initial fetch is cancellable when the app exits.
-		initialIssues, ghErr = githubIssues(rootCtx, initialGitURL)
+		initialIssues, ghErr = githubIssues(rootCtx, initialGitURL, "open")
 		if ghErr != nil {
 			initialGitViewText += "  (" + ghErr.Error() + ")"
 		}
@@ -189,6 +189,11 @@ func main() {
 	issueDropdown := tview.NewDropDown().
 		SetLabel("GH Issue").
 		SetOptions(initialIssues, nil)
+
+	stateDropdown := tview.NewDropDown().
+		SetLabel("State").
+		SetOptions([]string{"Open", "Closed", "All"}, nil).
+		SetCurrentOption(0)
 
 	dates, todayIdx := dateOptions()
 	durations := durationOptions()
@@ -226,7 +231,8 @@ func main() {
 			loadCtx, cancel := context.WithTimeout(rootCtx, 8*time.Second)
 			loadCancel = cancel
 
-			go func(gen int, opt string, ctx context.Context) {
+			_, stateText := stateDropdown.GetCurrentOption()
+			go func(gen int, opt string, stateText string, ctx context.Context) {
 				tasks := projectTasks(ctx, opt)
 				var gitViewText string
 				var issues []string
@@ -237,7 +243,7 @@ func main() {
 					var ghErr error
 					// Use the same load context so issue fetches are cancelled when
 					// the project selection changes.
-					issues, ghErr = githubIssues(ctx, gitURL)
+					issues, ghErr = githubIssues(ctx, gitURL, strings.ToLower(stateText))
 					if ghErr != nil {
 						gitViewText += "  (" + ghErr.Error() + ")"
 					}
@@ -255,7 +261,7 @@ func main() {
 					issueDropdown.SetOptions(issues, nil)
 					issueDropdown.SetCurrentOption(0)
 				})
-			}(gen, option, loadCtx)
+			}(gen, option, stateText, loadCtx)
 		})
 
 	taskForm := tview.NewForm().
@@ -270,6 +276,51 @@ func main() {
 	// Issue form (standalone, repo is display-only and not in any form).
 	issueForm := tview.NewForm().
 		AddFormItem(issueDropdown)
+
+	// State form for filtering issue state (Open / Closed / All).
+	stateForm := tview.NewForm().
+		AddFormItem(stateDropdown)
+
+	// Wire state change to re-fetch issues for the current project.
+	stateDropdown.SetSelectedFunc(func(option string, _ int) {
+		state := strings.ToLower(option)
+		p := selectedProject
+		if p == nil {
+			return
+		}
+		gitURL := parseGitURL(p.description)
+		if gitURL == "" {
+			return
+		}
+		loadGen++
+		gen := loadGen
+		if loadCancel != nil {
+			loadCancel()
+		}
+		loadCtx, cancel := context.WithTimeout(rootCtx, 8*time.Second)
+		loadCancel = cancel
+
+		go func(gen int, state string, ctx context.Context) {
+			issues, ghErr := githubIssues(ctx, gitURL, state)
+			app.QueueUpdateDraw(func() {
+				if gen != loadGen {
+					return
+				}
+				if ghErr != nil {
+					gitURLView.SetText(" Repo: " + gitURL + "  (" + ghErr.Error() + ")")
+					return
+				}
+				issueDropdown.SetOptions(issues, nil)
+				issueDropdown.SetCurrentOption(0)
+			})
+		}(gen, state, loadCtx)
+	})
+
+	// Side-by-side row: state | issue.
+	issueRow := tview.NewFlex().
+		SetDirection(tview.FlexColumn).
+		AddItem(stateForm, 16, 0, false).
+		AddItem(issueForm, 0, 1, false)
 
 	// Date / Duration side-by-side row.
 	dateForm := tview.NewForm().
@@ -413,7 +464,7 @@ func main() {
 	})
 
 	// Wire up tab progression across all forms in order:
-	// projectForm -> taskForm -> issueForm -> dateForm -> durationForm -> timesheetArea -> saveBtn -> quitBtn -> (wrap)
+	// projectForm -> taskForm -> stateForm -> issueForm -> dateForm -> durationForm -> timesheetArea -> saveBtn -> quitBtn -> (wrap)
 
 	projectForm.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyTab {
@@ -429,7 +480,7 @@ func main() {
 
 	taskForm.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyTab {
-			app.SetFocus(issueForm)
+			app.SetFocus(stateForm)
 			return nil
 		}
 		if event.Key() == tcell.KeyBacktab {
@@ -442,6 +493,18 @@ func main() {
 	issueForm.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyTab {
 			app.SetFocus(dateForm)
+			return nil
+		}
+		if event.Key() == tcell.KeyBacktab {
+			app.SetFocus(stateForm)
+			return nil
+		}
+		return event
+	})
+
+	stateForm.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyTab {
+			app.SetFocus(issueForm)
 			return nil
 		}
 		if event.Key() == tcell.KeyBacktab {
@@ -509,6 +572,7 @@ func main() {
 		dd.SetLabelStyle(lblStyle)
 	}
 	applyDD(taskDropdown)
+	applyDD(stateDropdown)
 	applyDD(issueDropdown)
 	applyDD(projectForm.GetFormItemByLabel("Project").(*tview.DropDown))
 	applyDD(dateForm.GetFormItemByLabel("Date").(*tview.DropDown))
@@ -519,7 +583,7 @@ func main() {
 		SetDirection(tview.FlexRow).
 		AddItem(topRow, 3, 0, true).
 		AddItem(gitURLView, 1, 0, false).
-		AddItem(issueForm, 3, 0, false).
+		AddItem(issueRow, 3, 0, false).
 		AddItem(dateRow, 3, 0, false).
 		AddItem(timesheetArea, 0, 1, false).
 		AddItem(tview.NewBox(), 1, 0, false).
