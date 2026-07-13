@@ -30,12 +30,21 @@ var (
 func projects(ctx context.Context) []projectInfo {
 	conn, err := NewConn(ctx)
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("projects: NewConn failed: %v", err)
+		}
 		return nil
+	}
+	if dbg != nil {
+		dbg.Printf("projects: fetching project.project (stage=In Progress)")
 	}
 	records, err := conn.SearchRead(ctx, "project.project", 0, 0,
 		[]string{"id", "name", "description", "account_id"},
 		[]any{[]any{"stage_id", "=", "In Progress"}})
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("projects: SearchRead failed: %v", err)
+		}
 		return nil
 	}
 	infos := make([]projectInfo, 0, len(records))
@@ -69,6 +78,12 @@ func projects(ctx context.Context) []projectInfo {
 	slices.SortFunc(infos, func(a, b projectInfo) int {
 		return strings.Compare(a.name, b.name)
 	})
+	if dbg != nil {
+		dbg.Printf("projects: got %d projects", len(infos))
+		for _, p := range infos {
+			dbg.Printf("projects:   [%d] %s (account=%d)", p.id, p.name, p.accountID)
+		}
+	}
 	return infos
 }
 
@@ -113,7 +128,13 @@ func findProject(infos []projectInfo, name string) *projectInfo {
 func projectTasks(ctx context.Context, projectName string) []taskInfo {
 	conn, err := NewConn(ctx)
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("projectTasks(%q): NewConn failed: %v", projectName, err)
+		}
 		return nil
+	}
+	if dbg != nil {
+		dbg.Printf("projectTasks(%q): fetching tasks", projectName)
 	}
 	allowedTasks := []any{"Odoo Support", "Development", "Planning / Discovery"}
 	nameFilter := []any{"name", "in", allowedTasks}
@@ -126,6 +147,9 @@ func projectTasks(ctx context.Context, projectName string) []taskInfo {
 			[]any{nameFilter})
 	}
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("projectTasks(%q): SearchRead failed: %v", projectName, err)
+		}
 		return nil
 	}
 	tasks := make([]taskInfo, 0, len(records))
@@ -144,6 +168,12 @@ func projectTasks(ctx context.Context, projectName string) []taskInfo {
 	slices.SortFunc(tasks, func(a, b taskInfo) int {
 		return taskOrder[a.name] - taskOrder[b.name]
 	})
+	if dbg != nil {
+		dbg.Printf("projectTasks(%q): got %d tasks", projectName, len(tasks))
+		for _, t := range tasks {
+			dbg.Printf("projectTasks(%q):   [%d] %s", projectName, t.id, t.name)
+		}
+	}
 	return tasks
 }
 

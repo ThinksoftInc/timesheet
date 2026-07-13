@@ -50,7 +50,14 @@ func loadConfig() (serverConfig, error) {
 func NewConn(ctx context.Context) (odoorpc.Odoo, error) {
 	cfg, err := loadConfig()
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("NewConn: loadConfig failed: %v", err)
+		}
 		return nil, err
+	}
+	if dbg != nil {
+		dbg.Printf("NewConn: connecting to %s://%s:%d/%s as %s",
+			cfg.Schema, cfg.Hostname, cfg.Port, cfg.Database, cfg.Username)
 	}
 	conn := odoojrpc.NewOdoo().
 		WithHostname(cfg.Hostname).
@@ -60,7 +67,13 @@ func NewConn(ctx context.Context) (odoorpc.Odoo, error) {
 		WithUsername(cfg.Username).
 		WithPassword(cfg.Apikey)
 	if err := conn.Login(ctx); err != nil {
+		if dbg != nil {
+			dbg.Printf("NewConn: login failed: %v", err)
+		}
 		return nil, fmt.Errorf("odoo login: %w", err)
+	}
+	if dbg != nil {
+		dbg.Printf("NewConn: login successful")
 	}
 	return conn, nil
 }

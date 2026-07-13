@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strconv"
@@ -91,6 +92,15 @@ func formatDescription(issueText, areaText string) string {
 }
 
 func main() {
+	logFlag := flag.Bool("log", false, "enable debug logging to ~/.local/share/thinksoft/timesheet.log")
+	flag.Parse()
+
+	if *logFlag {
+		if err := initLogger(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not create log file: %v\n", err)
+		}
+	}
+
 	if _, err := loadConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n\n", err)
 		fmt.Fprintf(os.Stderr, "Create %s with the following contents:\n\n", configFilePath())
