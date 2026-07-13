@@ -77,8 +77,15 @@ func githubIssues(ctx context.Context, repoURL string, state string) ([]string, 
 	path = strings.TrimPrefix(path, "http://github.com/")
 	apiURL := "https://api.github.com/repos/" + path + "/issues?state=" + state + "&per_page=100"
 
+	if dbg != nil {
+		dbg.Printf("githubIssues: fetching %s (token=%s)", apiURL, boolStr(githubToken() != ""))
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("githubIssues: NewRequest failed: %v", err)
+		}
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -90,17 +97,27 @@ func githubIssues(ctx context.Context, repoURL string, state string) ([]string, 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		if dbg != nil {
+			dbg.Printf("githubIssues: HTTP request failed: %v", err)
+		}
 		return nil, err
 	}
 	// explicitly ignore Close error to satisfy errcheck
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API: %s", resp.Status)
+		err := fmt.Errorf("GitHub API: %s", resp.Status)
+		if dbg != nil {
+			dbg.Printf("githubIssues: %v", err)
+		}
+		return nil, err
 	}
 
 	var issues []ghIssue
 	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
+		if dbg != nil {
+			dbg.Printf("githubIssues: decode failed: %v", err)
+		}
 		return nil, err
 	}
 
@@ -110,6 +127,9 @@ func githubIssues(ctx context.Context, repoURL string, state string) ([]string, 
 			continue // skip pull requests
 		}
 		titles = append(titles, fmt.Sprintf("#%d %s", issue.Number, issue.Title))
+	}
+	if dbg != nil {
+		dbg.Printf("githubIssues: got %d issues (%d total items)", len(titles), len(issues))
 	}
 	return titles, nil
 }
